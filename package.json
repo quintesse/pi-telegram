@@ -7,7 +7,7 @@
   "homepage": "https://github.com/raghavbali/pitgram#readme",
   "repository": {
     "type": "git",
-    "url": "https://github.com/raghavbali/pitgram.git"
+    "url": "git+https://github.com/raghavbali/pitgram.git"
   },
   "bugs": {
     "url": "https://github.com/raghavbali/pitgram/issues"
