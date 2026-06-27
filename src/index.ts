@@ -16,6 +16,24 @@ ExtensionRunner.prototype.bindCore = function (actions, contextActions, provider
 	return originalBindCore.call(this, actions, contextActions, providerActions);
 };
 
+const originalCreateContext = ExtensionRunner.prototype.createContext;
+ExtensionRunner.prototype.createContext = function () {
+	activeRunner = this;
+	return originalCreateContext.call(this);
+};
+
+const originalCreateCommandContext = ExtensionRunner.prototype.createCommandContext;
+ExtensionRunner.prototype.createCommandContext = function () {
+	activeRunner = this;
+	return originalCreateCommandContext.call(this);
+};
+
+const originalEmit = ExtensionRunner.prototype.emit;
+(ExtensionRunner.prototype as any).emit = function (this: ExtensionRunner, ...args: any[]) {
+	activeRunner = this;
+	return (originalEmit as any).apply(this, args);
+};
+
 interface TelegramConfig {
 	botToken?: string;
 	botUsername?: string;
@@ -846,6 +864,9 @@ export default function (pi: ExtensionAPI) {
 			setTimeout(async () => {
 				try {
 					const cmdCtx = activeRunner ? activeRunner.createCommandContext() : (ctx as ExtensionCommandContext);
+					if (typeof cmdCtx.newSession !== "function") {
+						throw new Error("cmdCtx.newSession is not a function in current context");
+					}
 					await cmdCtx.newSession({
 						setup: async (sm) => {
 							if (name) {
@@ -889,6 +910,9 @@ export default function (pi: ExtensionAPI) {
 			setTimeout(async () => {
 				try {
 					const cmdCtx = activeRunner ? activeRunner.createCommandContext() : (ctx as ExtensionCommandContext);
+					if (typeof cmdCtx.switchSession !== "function") {
+						throw new Error("cmdCtx.switchSession is not a function in current context");
+					}
 					await cmdCtx.switchSession(targetPath, {
 						withSession: async (newCtx) => {
 							const sessionName = newCtx.sessionManager.getSessionName() || basename(targetPath);
@@ -923,6 +947,9 @@ export default function (pi: ExtensionAPI) {
 			setTimeout(async () => {
 				try {
 					const cmdCtx = activeRunner ? activeRunner.createCommandContext() : (ctx as ExtensionCommandContext);
+					if (typeof cmdCtx.fork !== "function") {
+						throw new Error("cmdCtx.fork is not a function in current context");
+					}
 					await cmdCtx.fork(leafId, {
 						position: "at",
 						withSession: async (newCtx) => {
@@ -1296,8 +1323,13 @@ export default function (pi: ExtensionAPI) {
 				await promptForConfig(ctx);
 				return;
 			}
+			if (pollingPromise) {
+				ctx.ui.notify("Pitgram bridge is already connected and polling.", "info");
+				return;
+			}
 			await startPolling(ctx);
 			updateStatus(ctx);
+			ctx.ui.notify(`Pitgram bridge connected. Bot: @${config.botUsername ?? "unknown"}${config.allowedUserId ? "" : " (awaiting pairing)"}`, "info");
 		},
 	});
 
@@ -1306,6 +1338,7 @@ export default function (pi: ExtensionAPI) {
 		handler: async (_args, ctx) => {
 			await stopPolling();
 			updateStatus(ctx);
+			ctx.ui.notify("Pitgram bridge disconnected.", "info");
 		},
 	});
 

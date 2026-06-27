@@ -60,3 +60,42 @@ test("chunkParagraphs splits large text blocks cleanly", () => {
 	assert.equal(chunks[0], paragraph1);
 	assert.equal(chunks[1], paragraph2);
 });
+
+test("pitgram-connect and pitgram-disconnect commands emit terminal notifications", async () => {
+	const pitgramExtensionModule = await import("../dist/index.js");
+	const pitgramExtension = pitgramExtensionModule.default;
+
+	const commands = new Map<string, any>();
+	const mockApi: any = {
+		on: () => {},
+		registerTool: () => {},
+		registerCommand: (name: string, options: any) => {
+			commands.set(name, options);
+		},
+	};
+
+	pitgramExtension(mockApi);
+
+	assert.equal(commands.has("pitgram-connect"), true);
+	assert.equal(commands.has("pitgram-disconnect"), true);
+
+	const notifications: Array<{ message: string; type: string }> = [];
+	const mockCtx: any = {
+		ui: {
+			notify: (message: string, type: string) => {
+				notifications.push({ message, type });
+			},
+			setStatus: () => {},
+			theme: { fg: (_color: string, text: string) => text },
+		},
+	};
+
+	const connectCmd = commands.get("pitgram-connect");
+	await connectCmd.handler("", mockCtx);
+	assert.equal(notifications.length > 0, true);
+
+	const disconnectCmd = commands.get("pitgram-disconnect");
+	await disconnectCmd.handler("", mockCtx);
+	assert.equal(notifications.length > 1, true);
+	assert.equal(notifications.some((n) => n.message.includes("disconnected")), true);
+});

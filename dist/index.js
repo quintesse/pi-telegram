@@ -9,6 +9,21 @@ ExtensionRunner.prototype.bindCore = function (actions, contextActions, provider
     activeRunner = this;
     return originalBindCore.call(this, actions, contextActions, providerActions);
 };
+const originalCreateContext = ExtensionRunner.prototype.createContext;
+ExtensionRunner.prototype.createContext = function () {
+    activeRunner = this;
+    return originalCreateContext.call(this);
+};
+const originalCreateCommandContext = ExtensionRunner.prototype.createCommandContext;
+ExtensionRunner.prototype.createCommandContext = function () {
+    activeRunner = this;
+    return originalCreateCommandContext.call(this);
+};
+const originalEmit = ExtensionRunner.prototype.emit;
+ExtensionRunner.prototype.emit = function (...args) {
+    activeRunner = this;
+    return originalEmit.apply(this, args);
+};
 const CONFIG_PATH = join(homedir(), ".pi", "agent", "telegram.json");
 const TEMP_DIR = join(homedir(), ".pi", "agent", "tmp", "telegram");
 const TELEGRAM_PREFIX = "[telegram]";
@@ -670,6 +685,9 @@ export default function (pi) {
             setTimeout(async () => {
                 try {
                     const cmdCtx = activeRunner ? activeRunner.createCommandContext() : ctx;
+                    if (typeof cmdCtx.newSession !== "function") {
+                        throw new Error("cmdCtx.newSession is not a function in current context");
+                    }
                     await cmdCtx.newSession({
                         setup: async (sm) => {
                             if (name) {
@@ -714,6 +732,9 @@ export default function (pi) {
             setTimeout(async () => {
                 try {
                     const cmdCtx = activeRunner ? activeRunner.createCommandContext() : ctx;
+                    if (typeof cmdCtx.switchSession !== "function") {
+                        throw new Error("cmdCtx.switchSession is not a function in current context");
+                    }
                     await cmdCtx.switchSession(targetPath, {
                         withSession: async (newCtx) => {
                             const sessionName = newCtx.sessionManager.getSessionName() || basename(targetPath);
@@ -749,6 +770,9 @@ export default function (pi) {
             setTimeout(async () => {
                 try {
                     const cmdCtx = activeRunner ? activeRunner.createCommandContext() : ctx;
+                    if (typeof cmdCtx.fork !== "function") {
+                        throw new Error("cmdCtx.fork is not a function in current context");
+                    }
                     await cmdCtx.fork(leafId, {
                         position: "at",
                         withSession: async (newCtx) => {
@@ -1103,8 +1127,13 @@ export default function (pi) {
                 await promptForConfig(ctx);
                 return;
             }
+            if (pollingPromise) {
+                ctx.ui.notify("Pitgram bridge is already connected and polling.", "info");
+                return;
+            }
             await startPolling(ctx);
             updateStatus(ctx);
+            ctx.ui.notify(`Pitgram bridge connected. Bot: @${config.botUsername ?? "unknown"}${config.allowedUserId ? "" : " (awaiting pairing)"}`, "info");
         },
     });
     pi.registerCommand("pitgram-disconnect", {
@@ -1112,6 +1141,7 @@ export default function (pi) {
         handler: async (_args, ctx) => {
             await stopPolling();
             updateStatus(ctx);
+            ctx.ui.notify("Pitgram bridge disconnected.", "info");
         },
     });
     pi.on("session_start", async (_event, ctx) => {
