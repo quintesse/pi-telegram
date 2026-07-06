@@ -15,67 +15,84 @@ function patchExtensionRunnerClass(RunnerClass: any) {
 	if ((RunnerClass.prototype as any).__pitgram_patched) return;
 	(RunnerClass.prototype as any).__pitgram_patched = true;
 
-	const origBindCore = RunnerClass.prototype.bindCore;
-	if (typeof origBindCore === "function") {
-		RunnerClass.prototype.bindCore = function (this: any, ...args: any[]) {
-			activeRunner = this;
-			return origBindCore.apply(this, args);
-		};
-	}
+	const methodsToPatch = [
+		"bindCore",
+		"bindCommandContext",
+		"setUIContext",
+		"createContext",
+		"createCommandContext",
+		"emit",
+		"getFlags",
+		"getAllRegisteredTools",
+	];
 
-	const origCreateContext = RunnerClass.prototype.createContext;
-	if (typeof origCreateContext === "function") {
-		RunnerClass.prototype.createContext = function (this: any, ...args: any[]) {
-			activeRunner = this;
-			return origCreateContext.apply(this, args);
-		};
-	}
-
-	const origCreateCommandContext = RunnerClass.prototype.createCommandContext;
-	if (typeof origCreateCommandContext === "function") {
-		RunnerClass.prototype.createCommandContext = function (this: any, ...args: any[]) {
-			activeRunner = this;
-			return origCreateCommandContext.apply(this, args);
-		};
-	}
-
-	const origEmit = RunnerClass.prototype.emit;
-	if (typeof origEmit === "function") {
-		RunnerClass.prototype.emit = function (this: any, ...args: any[]) {
-			activeRunner = this;
-			return origEmit.apply(this, args);
-		};
-	}
-}
-
-// 1. Patch local imported ExtensionRunner
-patchExtensionRunnerClass(ExtensionRunner);
-
-// 2. Patch global/well-known installations of pi-coding-agent
-const potentialModulePaths = [
-	"/opt/homebrew/lib/node_modules/@earendil-works/pi-coding-agent/dist/index.js",
-	"/opt/homebrew/lib/node_modules/@earendil-works/pi-coding-agent/dist/core/extensions/runner.js",
-	"/usr/local/lib/node_modules/@earendil-works/pi-coding-agent/dist/index.js",
-	"/usr/local/lib/node_modules/@earendil-works/pi-coding-agent/dist/core/extensions/runner.js",
-];
-
-for (const p of potentialModulePaths) {
-	try {
-		if (typeof require !== "undefined") {
-			const mod = require(p);
-			if (mod && mod.ExtensionRunner) patchExtensionRunnerClass(mod.ExtensionRunner);
-		}
-	} catch {}
-}
-
-// 3. Inspect require.cache if available
-if (typeof require !== "undefined" && require.cache) {
-	for (const key of Object.keys(require.cache)) {
-		if (key.includes("pi-coding-agent") && (require.cache[key]?.exports as any)?.ExtensionRunner) {
-			patchExtensionRunnerClass((require.cache[key]!.exports as any).ExtensionRunner);
+	for (const method of methodsToPatch) {
+		const orig = RunnerClass.prototype[method];
+		if (typeof orig === "function") {
+			RunnerClass.prototype[method] = function (this: any, ...args: any[]) {
+				activeRunner = this;
+				return orig.apply(this, args);
+			};
 		}
 	}
 }
+
+let runnersPatchedPromise: Promise<void> | undefined;
+
+function ensureRunnersPatched(): Promise<void> {
+	if (runnersPatchedPromise) return runnersPatchedPromise;
+
+	runnersPatchedPromise = (async () => {
+		patchExtensionRunnerClass(ExtensionRunner);
+
+		const pathsToTry: string[] = [];
+
+		if (typeof process !== "undefined" && process.argv && process.argv[1]) {
+			try {
+				const fs = await import("node:fs");
+				const path = await import("node:path");
+				const realCliPath = fs.realpathSync(process.argv[1]);
+				if (realCliPath.includes("pi-coding-agent")) {
+					const distDir = path.dirname(realCliPath);
+					pathsToTry.push(path.join(distDir, "index.js"));
+					pathsToTry.push(path.join(distDir, "core/extensions/runner.js"));
+				}
+			} catch {}
+		}
+
+		pathsToTry.push(
+			"/opt/homebrew/lib/node_modules/@earendil-works/pi-coding-agent/dist/index.js",
+			"/opt/homebrew/lib/node_modules/@earendil-works/pi-coding-agent/dist/core/extensions/runner.js",
+			"/usr/local/lib/node_modules/@earendil-works/pi-coding-agent/dist/index.js",
+			"/usr/local/lib/node_modules/@earendil-works/pi-coding-agent/dist/core/extensions/runner.js"
+		);
+
+		for (const p of pathsToTry) {
+			try {
+				const fileUrl = p.startsWith("file:") ? p : `file://${p}`;
+				const mod = await import(fileUrl);
+				if (mod && mod.ExtensionRunner) {
+					patchExtensionRunnerClass(mod.ExtensionRunner);
+				}
+			} catch {}
+		}
+
+		if (typeof require !== "undefined" && require.cache) {
+			for (const key of Object.keys(require.cache)) {
+				try {
+					const exp = require.cache[key]?.exports;
+					if (!exp) continue;
+					if (exp.ExtensionRunner) patchExtensionRunnerClass(exp.ExtensionRunner);
+					if (exp.default && exp.default.ExtensionRunner) patchExtensionRunnerClass(exp.default.ExtensionRunner);
+				} catch {}
+			}
+		}
+	})();
+
+	return runnersPatchedPromise;
+}
+
+ensureRunnersPatched().catch(() => undefined);
 
 interface TelegramConfig {
 	botToken?: string;
@@ -389,6 +406,7 @@ export async function getConfiguredModels(ctx: ExtensionContext): Promise<any[]>
 }
 
 export default function (pi: ExtensionAPI) {
+	ensureRunnersPatched();
 	let config: TelegramConfig = {};
 	let pollingController: AbortController | undefined;
 	let pollingPromise: Promise<void> | undefined;
@@ -906,9 +924,11 @@ export default function (pi: ExtensionAPI) {
 			void sendTextReply(firstMessage.chat.id, firstMessage.message_id, `Starting a new session${name ? ` "${name}"` : ""}...`).catch(() => undefined);
 			setTimeout(async () => {
 				try {
+					await ensureRunnersPatched();
 					const cmdCtx = activeRunner ? activeRunner.createCommandContext() : (ctx as ExtensionCommandContext);
 					if (typeof cmdCtx.newSession !== "function") {
-						throw new Error("cmdCtx.newSession is not a function in current context");
+						const diag = `activeRunner=${!!activeRunner}, keys=${Object.keys(cmdCtx).join(",")}`;
+						throw new Error(`cmdCtx.newSession is not a function in current context (${diag})`);
 					}
 					await cmdCtx.newSession({
 						setup: async (sm: any) => {
@@ -952,9 +972,11 @@ export default function (pi: ExtensionAPI) {
 			void sendTextReply(firstMessage.chat.id, firstMessage.message_id, `Switching to session: ${targetPath}...`).catch(() => undefined);
 			setTimeout(async () => {
 				try {
+					await ensureRunnersPatched();
 					const cmdCtx = activeRunner ? activeRunner.createCommandContext() : (ctx as ExtensionCommandContext);
 					if (typeof cmdCtx.switchSession !== "function") {
-						throw new Error("cmdCtx.switchSession is not a function in current context");
+						const diag = `activeRunner=${!!activeRunner}, keys=${Object.keys(cmdCtx).join(",")}`;
+						throw new Error(`cmdCtx.switchSession is not a function in current context (${diag})`);
 					}
 					await cmdCtx.switchSession(targetPath, {
 						withSession: async (newCtx: any) => {
@@ -989,9 +1011,11 @@ export default function (pi: ExtensionAPI) {
 			void sendTextReply(firstMessage.chat.id, firstMessage.message_id, "Forking current session...").catch(() => undefined);
 			setTimeout(async () => {
 				try {
+					await ensureRunnersPatched();
 					const cmdCtx = activeRunner ? activeRunner.createCommandContext() : (ctx as ExtensionCommandContext);
 					if (typeof cmdCtx.fork !== "function") {
-						throw new Error("cmdCtx.fork is not a function in current context");
+						const diag = `activeRunner=${!!activeRunner}, keys=${Object.keys(cmdCtx).join(",")}`;
+						throw new Error(`cmdCtx.fork is not a function in current context (${diag})`);
 					}
 					await cmdCtx.fork(leafId, {
 						position: "at",
@@ -1386,13 +1410,7 @@ export default function (pi: ExtensionAPI) {
 	});
 
 	pi.on("session_start", async (_event, ctx) => {
-		if (typeof require !== "undefined" && require.cache) {
-			for (const key of Object.keys(require.cache)) {
-				if (key.includes("pi-coding-agent") && (require.cache[key]?.exports as any)?.ExtensionRunner) {
-					patchExtensionRunnerClass((require.cache[key]!.exports as any).ExtensionRunner);
-				}
-			}
-		}
+		await ensureRunnersPatched();
 		config = await readConfig();
 		await mkdir(TEMP_DIR, { recursive: true });
 		updateStatus(ctx);

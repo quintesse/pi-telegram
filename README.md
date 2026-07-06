@@ -10,6 +10,9 @@ Pitgram is a custom Pi extension that bridges Telegram chats with your Pi agent.
 ![Reasoning & Thinking Updates](https://raw.githubusercontent.com/raghavbali/pitgram/main/assets/screenshot2.png)
 *Changing reasoning thinking levels remotely and receiving detailed responses.*
 
+![Remote Session Management](https://raw.githubusercontent.com/raghavbali/pitgram/main/assets/screenshot3.png)
+*Creating and managing sessions remotely using /new.*
+
 ## Features
 - **Remote Polling Loop**: Continues running seamlessly across session swaps.
 - **Typing Indicators & Draft Previews**: Sends typing status updates and real-time draft edits to Telegram.
