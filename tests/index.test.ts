@@ -8,6 +8,8 @@ import {
 	isImageMimeType,
 	formatTokens,
 	chunkParagraphs,
+	hasSessionCommands,
+	resolveCommandContext,
 } from "../dist/index.js";
 
 test("isTelegramPrompt identifies telegram prompt prefix", () => {
@@ -59,6 +61,41 @@ test("chunkParagraphs splits large text blocks cleanly", () => {
 	assert.equal(chunks.length, 2);
 	assert.equal(chunks[0], paragraph1);
 	assert.equal(chunks[1], paragraph2);
+});
+
+test("resolveCommandContext prefers the runner with command bindings", () => {
+	const fallbackCtx: any = { source: "fallback" };
+	const activeOnlyCtx: any = {
+		source: "active",
+		newSession: async () => ({ cancelled: false }),
+		fork: async () => ({ cancelled: false }),
+		switchSession: async () => ({ cancelled: false }),
+		reload: async () => {},
+	};
+	const commandCtx: any = {
+		source: "command",
+		newSession: async () => ({ cancelled: false }),
+		fork: async () => ({ cancelled: false }),
+		switchSession: async () => ({ cancelled: false }),
+		reload: async () => {},
+	};
+
+	assert.equal(hasSessionCommands(fallbackCtx), false);
+	assert.equal(hasSessionCommands(activeOnlyCtx), true);
+	assert.equal(
+		resolveCommandContext(fallbackCtx, {
+			commandRunner: { createCommandContext: () => commandCtx },
+			activeRunner: { createCommandContext: () => activeOnlyCtx },
+		}),
+		commandCtx,
+	);
+	assert.equal(
+		resolveCommandContext(fallbackCtx, {
+			activeRunner: { createCommandContext: () => activeOnlyCtx },
+		}),
+		activeOnlyCtx,
+	);
+	assert.equal(resolveCommandContext(fallbackCtx), fallbackCtx);
 });
 
 test("telegram-connect and telegram-disconnect commands emit terminal notifications", async () => {

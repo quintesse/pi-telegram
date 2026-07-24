@@ -1,4 +1,13 @@
-import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
+import type { ExtensionAPI, ExtensionContext, ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
+export declare function hasSessionCommands(ctx: unknown): ctx is Pick<ExtensionCommandContext, "newSession" | "fork" | "switchSession" | "reload">;
+export declare function resolveCommandContext(ctx: ExtensionContext, options?: {
+    commandRunner?: {
+        createCommandContext?: () => unknown;
+    };
+    activeRunner?: {
+        createCommandContext?: () => unknown;
+    };
+}): ExtensionCommandContext;
 export declare function isTelegramPrompt(prompt: string): boolean;
 export declare function sanitizeFileName(name: string): string;
 export declare function guessExtensionFromMime(mimeType: string | undefined, fallback: string): string;

@@ -9,6 +9,32 @@ import { ExtensionRunner, SessionManager, type SessionInfo } from "@earendil-wor
 import { Type } from "@sinclair/typebox";
 
 let activeRunner: any | undefined;
+let commandRunner: any | undefined;
+
+export function hasSessionCommands(ctx: unknown): ctx is Pick<ExtensionCommandContext, "newSession" | "fork" | "switchSession" | "reload"> {
+	return !!ctx
+		&& typeof (ctx as any).newSession === "function"
+		&& typeof (ctx as any).fork === "function"
+		&& typeof (ctx as any).switchSession === "function"
+		&& typeof (ctx as any).reload === "function";
+}
+
+export function resolveCommandContext(
+	ctx: ExtensionContext,
+	options: {
+		commandRunner?: { createCommandContext?: () => unknown };
+		activeRunner?: { createCommandContext?: () => unknown };
+	} = {},
+): ExtensionCommandContext {
+	const candidate = options.commandRunner?.createCommandContext?.()
+		?? options.activeRunner?.createCommandContext?.()
+		?? ctx;
+	return candidate as ExtensionCommandContext;
+}
+
+function getCommandContext(ctx: ExtensionContext): ExtensionCommandContext {
+	return resolveCommandContext(ctx, { commandRunner, activeRunner });
+}
 
 function patchExtensionRunnerClass(RunnerClass: any) {
 	if (!RunnerClass || !RunnerClass.prototype) return;
@@ -31,6 +57,9 @@ function patchExtensionRunnerClass(RunnerClass: any) {
 		if (typeof orig === "function") {
 			RunnerClass.prototype[method] = function (this: any, ...args: any[]) {
 				activeRunner = this;
+				if (method === "bindCommandContext" && args[0]) {
+					commandRunner = this;
+				}
 				return orig.apply(this, args);
 			};
 		}
@@ -925,10 +954,10 @@ export default function (pi: ExtensionAPI) {
 			setTimeout(async () => {
 				try {
 					await ensureRunnersPatched();
-					const cmdCtx = activeRunner ? activeRunner.createCommandContext() : (ctx as ExtensionCommandContext);
-					if (typeof cmdCtx.newSession !== "function") {
-						const diag = `activeRunner=${!!activeRunner}, keys=${Object.keys(cmdCtx).join(",")}`;
-						throw new Error(`cmdCtx.newSession is not a function in current context (${diag})`);
+					const cmdCtx = getCommandContext(ctx);
+					if (!hasSessionCommands(cmdCtx)) {
+						const diag = `commandRunner=${!!commandRunner}, activeRunner=${!!activeRunner}, keys=${Object.keys(cmdCtx).join(",")}`;
+						throw new Error(`No live command context available (${diag})`);
 					}
 					await cmdCtx.newSession({
 						setup: async (sm: any) => {
@@ -973,10 +1002,10 @@ export default function (pi: ExtensionAPI) {
 			setTimeout(async () => {
 				try {
 					await ensureRunnersPatched();
-					const cmdCtx = activeRunner ? activeRunner.createCommandContext() : (ctx as ExtensionCommandContext);
-					if (typeof cmdCtx.switchSession !== "function") {
-						const diag = `activeRunner=${!!activeRunner}, keys=${Object.keys(cmdCtx).join(",")}`;
-						throw new Error(`cmdCtx.switchSession is not a function in current context (${diag})`);
+					const cmdCtx = getCommandContext(ctx);
+					if (!hasSessionCommands(cmdCtx)) {
+						const diag = `commandRunner=${!!commandRunner}, activeRunner=${!!activeRunner}, keys=${Object.keys(cmdCtx).join(",")}`;
+						throw new Error(`No live command context available (${diag})`);
 					}
 					await cmdCtx.switchSession(targetPath, {
 						withSession: async (newCtx: any) => {
@@ -1012,10 +1041,10 @@ export default function (pi: ExtensionAPI) {
 			setTimeout(async () => {
 				try {
 					await ensureRunnersPatched();
-					const cmdCtx = activeRunner ? activeRunner.createCommandContext() : (ctx as ExtensionCommandContext);
-					if (typeof cmdCtx.fork !== "function") {
-						const diag = `activeRunner=${!!activeRunner}, keys=${Object.keys(cmdCtx).join(",")}`;
-						throw new Error(`cmdCtx.fork is not a function in current context (${diag})`);
+					const cmdCtx = getCommandContext(ctx);
+					if (!hasSessionCommands(cmdCtx)) {
+						const diag = `commandRunner=${!!commandRunner}, activeRunner=${!!activeRunner}, keys=${Object.keys(cmdCtx).join(",")}`;
+						throw new Error(`No live command context available (${diag})`);
 					}
 					await cmdCtx.fork(leafId, {
 						position: "at",
@@ -1193,7 +1222,7 @@ export default function (pi: ExtensionAPI) {
 					`Thinking Level: ${currentThinking}`,
 					`Active Tools: ${activeTools || "none"}`,
 					`Working Directory: ${ctx.cwd}`,
-					`Extension Mode: ${ctx.mode}`,
+					`Extension Mode: ${(ctx as any).mode}`,
 				].join("\n");
 				await sendTextReply(firstMessage.chat.id, firstMessage.message_id, settingsSummary);
 			} catch (error) {
@@ -1414,7 +1443,7 @@ export default function (pi: ExtensionAPI) {
 		config = await readConfig();
 		await mkdir(TEMP_DIR, { recursive: true });
 		updateStatus(ctx);
-		if (config.botToken && (ctx.mode === "tui" || ctx.mode === "rpc")) {
+		if (config.botToken && (((ctx as any).mode === "tui") || ((ctx as any).mode === "rpc"))) {
 			await startPolling(ctx);
 		}
 	});
