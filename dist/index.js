@@ -4,6 +4,23 @@ import { homedir } from "node:os";
 import { ExtensionRunner, SessionManager } from "@earendil-works/pi-coding-agent";
 import { Type } from "@sinclair/typebox";
 let activeRunner;
+let commandRunner;
+export function hasSessionCommands(ctx) {
+    return !!ctx
+        && typeof ctx.newSession === "function"
+        && typeof ctx.fork === "function"
+        && typeof ctx.switchSession === "function"
+        && typeof ctx.reload === "function";
+}
+export function resolveCommandContext(ctx, options = {}) {
+    const candidate = options.commandRunner?.createCommandContext?.()
+        ?? options.activeRunner?.createCommandContext?.()
+        ?? ctx;
+    return candidate;
+}
+function getCommandContext(ctx) {
+    return resolveCommandContext(ctx, { commandRunner, activeRunner });
+}
 function patchExtensionRunnerClass(RunnerClass) {
     if (!RunnerClass || !RunnerClass.prototype)
         return;
@@ -25,6 +42,9 @@ function patchExtensionRunnerClass(RunnerClass) {
         if (typeof orig === "function") {
             RunnerClass.prototype[method] = function (...args) {
                 activeRunner = this;
+                if (method === "bindCommandContext" && args[0]) {
+                    commandRunner = this;
+                }
                 return orig.apply(this, args);
             };
         }
@@ -741,10 +761,10 @@ export default function (pi) {
             setTimeout(async () => {
                 try {
                     await ensureRunnersPatched();
-                    const cmdCtx = activeRunner ? activeRunner.createCommandContext() : ctx;
-                    if (typeof cmdCtx.newSession !== "function") {
-                        const diag = `activeRunner=${!!activeRunner}, keys=${Object.keys(cmdCtx).join(",")}`;
-                        throw new Error(`cmdCtx.newSession is not a function in current context (${diag})`);
+                    const cmdCtx = getCommandContext(ctx);
+                    if (!hasSessionCommands(cmdCtx)) {
+                        const diag = `commandRunner=${!!commandRunner}, activeRunner=${!!activeRunner}, keys=${Object.keys(cmdCtx).join(",")}`;
+                        throw new Error(`No live command context available (${diag})`);
                     }
                     await cmdCtx.newSession({
                         setup: async (sm) => {
@@ -790,10 +810,10 @@ export default function (pi) {
             setTimeout(async () => {
                 try {
                     await ensureRunnersPatched();
-                    const cmdCtx = activeRunner ? activeRunner.createCommandContext() : ctx;
-                    if (typeof cmdCtx.switchSession !== "function") {
-                        const diag = `activeRunner=${!!activeRunner}, keys=${Object.keys(cmdCtx).join(",")}`;
-                        throw new Error(`cmdCtx.switchSession is not a function in current context (${diag})`);
+                    const cmdCtx = getCommandContext(ctx);
+                    if (!hasSessionCommands(cmdCtx)) {
+                        const diag = `commandRunner=${!!commandRunner}, activeRunner=${!!activeRunner}, keys=${Object.keys(cmdCtx).join(",")}`;
+                        throw new Error(`No live command context available (${diag})`);
                     }
                     await cmdCtx.switchSession(targetPath, {
                         withSession: async (newCtx) => {
@@ -830,10 +850,10 @@ export default function (pi) {
             setTimeout(async () => {
                 try {
                     await ensureRunnersPatched();
-                    const cmdCtx = activeRunner ? activeRunner.createCommandContext() : ctx;
-                    if (typeof cmdCtx.fork !== "function") {
-                        const diag = `activeRunner=${!!activeRunner}, keys=${Object.keys(cmdCtx).join(",")}`;
-                        throw new Error(`cmdCtx.fork is not a function in current context (${diag})`);
+                    const cmdCtx = getCommandContext(ctx);
+                    if (!hasSessionCommands(cmdCtx)) {
+                        const diag = `commandRunner=${!!commandRunner}, activeRunner=${!!activeRunner}, keys=${Object.keys(cmdCtx).join(",")}`;
+                        throw new Error(`No live command context available (${diag})`);
                     }
                     await cmdCtx.fork(leafId, {
                         position: "at",
@@ -1211,7 +1231,7 @@ export default function (pi) {
         config = await readConfig();
         await mkdir(TEMP_DIR, { recursive: true });
         updateStatus(ctx);
-        if (config.botToken && (ctx.mode === "tui" || ctx.mode === "rpc")) {
+        if (config.botToken && ((ctx.mode === "tui") || (ctx.mode === "rpc"))) {
             await startPolling(ctx);
         }
     });
