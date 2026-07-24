@@ -61,7 +61,7 @@ test("chunkParagraphs splits large text blocks cleanly", () => {
 	assert.equal(chunks[1], paragraph2);
 });
 
-test("pitgram-connect and pitgram-disconnect commands emit terminal notifications", async () => {
+test("telegram-connect and telegram-disconnect commands emit terminal notifications", async () => {
 	const pitgramExtensionModule = await import("../dist/index.js");
 	const pitgramExtension = pitgramExtensionModule.default;
 
@@ -76,8 +76,8 @@ test("pitgram-connect and pitgram-disconnect commands emit terminal notification
 
 	pitgramExtension(mockApi);
 
-	assert.equal(commands.has("pitgram-connect"), true);
-	assert.equal(commands.has("pitgram-disconnect"), true);
+	assert.equal(commands.has("telegram-connect"), true);
+	assert.equal(commands.has("telegram-disconnect"), true);
 
 	const notifications: Array<{ message: string; type: string }> = [];
 	const mockCtx: any = {
@@ -90,11 +90,11 @@ test("pitgram-connect and pitgram-disconnect commands emit terminal notification
 		},
 	};
 
-	const connectCmd = commands.get("pitgram-connect");
+	const connectCmd = commands.get("telegram-connect");
 	await connectCmd.handler("", mockCtx);
 	assert.equal(notifications.length > 0, true);
 
-	const disconnectCmd = commands.get("pitgram-disconnect");
+	const disconnectCmd = commands.get("telegram-disconnect");
 	await disconnectCmd.handler("", mockCtx);
 	assert.equal(notifications.length > 1, true);
 	assert.equal(notifications.some((n) => n.message.includes("disconnected")), true);

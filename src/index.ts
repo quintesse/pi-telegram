@@ -252,8 +252,8 @@ const SYSTEM_PROMPT_SUFFIX = `
 Telegram bridge extension is active.
 - Messages forwarded from Telegram are prefixed with "[telegram]".
 - [telegram] messages may include local temp file paths for Telegram attachments. Read those files as needed.
-- If a [telegram] user asked for a file or generated artifact, use the pitgram_attach tool with the local file path so the extension can send it with your next final reply.
-- Do not assume mentioning a local file path in plain text will send it to Telegram. Use pitgram_attach.`;
+- If a [telegram] user asked for a file or generated artifact, use the telegram_attach tool with the local file path so the extension can send it with your next final reply.
+- Do not assume mentioning a local file path in plain text will send it to Telegram. Use telegram_attach.`;
 
 export function isTelegramPrompt(prompt: string): boolean {
 	return prompt.trimStart().startsWith(TELEGRAM_PREFIX);
@@ -1328,19 +1328,19 @@ export default function (pi: ExtensionAPI) {
 	}
 
 	pi.registerTool({
-		name: "pitgram_attach",
-		label: "Pitgram Attach",
+		name: "telegram_attach",
+		label: "telegram attach",
 		description: "Queue one or more local files to be sent with the next Telegram reply.",
 		promptSnippet: "Queue local files to be sent with the next Telegram reply.",
 		promptGuidelines: [
-			"When handling a [telegram] message and the user asked for a file or generated artifact, call pitgram_attach with the local path instead of only mentioning the path in text.",
+			"When handling a [telegram] message and the user asked for a file or generated artifact, call telegram_attach with the local path instead of only mentioning the path in text.",
 		],
 		parameters: Type.Object({
 			paths: Type.Array(Type.String({ description: "Local file path to attach" }), { minItems: 1, maxItems: MAX_ATTACHMENTS_PER_TURN }),
 		}),
 		async execute(_toolCallId, params) {
 			if (!activeTelegramTurn) {
-				throw new Error("pitgram_attach can only be used while replying to an active Telegram turn");
+				throw new Error("telegram_attach can only be used while replying to an active Telegram turn");
 			}
 			const added: string[] = [];
 			for (const inputPath of params.paths) {
@@ -1361,15 +1361,15 @@ export default function (pi: ExtensionAPI) {
 		},
 	});
 
-	pi.registerCommand("pitgram-setup", {
-		description: "Configure Telegram bot token for Pitgram",
+	pi.registerCommand("telegram-setup", {
+		description: "configure telegram bot token for pi-telegram",
 		handler: async (_args, ctx) => {
 			await promptForConfig(ctx);
 		},
 	});
 
-	pi.registerCommand("pitgram-status", {
-		description: "Show Pitgram bridge status",
+	pi.registerCommand("telegram-status", {
+		description: "show pi-telegram bridge status",
 		handler: async (_args, ctx) => {
 			const status = [
 				`bot: ${config.botUsername ? `@${config.botUsername}` : "not configured"}`,
@@ -1382,8 +1382,8 @@ export default function (pi: ExtensionAPI) {
 		},
 	});
 
-	pi.registerCommand("pitgram-connect", {
-		description: "Start the Pitgram bridge in this pi session",
+	pi.registerCommand("telegram-connect", {
+		description: "start the pi-telegram bridge in this pi session",
 		handler: async (_args, ctx) => {
 			config = await readConfig();
 			if (!config.botToken) {
@@ -1391,21 +1391,21 @@ export default function (pi: ExtensionAPI) {
 				return;
 			}
 			if (pollingPromise) {
-				ctx.ui.notify("Pitgram bridge is already connected and polling.", "info");
+				ctx.ui.notify("pi-telegram bridge is already connected and polling.", "info");
 				return;
 			}
 			await startPolling(ctx);
 			updateStatus(ctx);
-			ctx.ui.notify(`Pitgram bridge connected. Bot: @${config.botUsername ?? "unknown"}${config.allowedUserId ? "" : " (awaiting pairing)"}`, "info");
+			ctx.ui.notify(`pi-telegram bridge connected. Bot: @${config.botUsername ?? "unknown"}${config.allowedUserId ? "" : " (awaiting pairing)"}`, "info");
 		},
 	});
 
-	pi.registerCommand("pitgram-disconnect", {
-		description: "Stop the Pitgram bridge in this pi session",
+	pi.registerCommand("telegram-disconnect", {
+		description: "stop the pi-telegram bridge in this pi session",
 		handler: async (_args, ctx) => {
 			await stopPolling();
 			updateStatus(ctx);
-			ctx.ui.notify("Pitgram bridge disconnected.", "info");
+			ctx.ui.notify("pi-telegram bridge disconnected.", "info");
 		},
 	});
 
