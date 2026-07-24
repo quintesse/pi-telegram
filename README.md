@@ -46,6 +46,28 @@ pi -e <path-to-pi-telegram>
 2. Run the `telegram-setup` command in the Pi console and enter your Telegram Bot API token when prompted.
 3. Open Telegram, find your bot, and send `/start` to pair your Telegram account with the active Pi bridge.
 
+## Sending messages and attachments
+
+### Send text
+
+Send any message in the bot DM. It is forwarded into pi with a `[telegram]` prefix.
+
+### Send images, voice notes, and files
+
+Send images, voice notes, albums, or files in the DM.
+
+The extension:
+- downloads them to `~/.pi/agent/tmp/telegram`
+- includes local file paths in the prompt
+- forwards inbound images as image inputs to pi
+- forwards voice/audio attachments so pi can transcribe them with a tool such as `transcribe_audio`
+
+To make voice notes work well, install a local transcription extension such as `pi-whisper`, then reload pi.
+
+### Ask for files back
+
+If you ask pi for a file or generated artifact, pi should call the `telegram_attach` tool. The extension then sends those files with the next Telegram reply.
+
 ## Commands
 
 ### Telegram Bot Commands

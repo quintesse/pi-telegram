@@ -159,6 +159,11 @@ export function guessMediaType(path) {
 export function isImageMimeType(mimeType) {
     return mimeType?.toLowerCase().startsWith("image/") ?? false;
 }
+export function isAudioFile(file) {
+    if (file.mimeType?.toLowerCase().startsWith("audio/"))
+        return true;
+    return [".ogg", ".oga", ".opus", ".mp3", ".wav", ".m4a", ".flac"].includes(extname(file.path).toLowerCase());
+}
 export function formatTokens(count) {
     if (count < 1000)
         return count.toString();
@@ -672,6 +677,9 @@ export default function (pi) {
             prompt += `\n\nTelegram attachments were saved locally:`;
             for (const file of files) {
                 prompt += `\n- ${file.path}`;
+            }
+            if (files.some(isAudioFile)) {
+                prompt += `\n\nOne or more attachments are audio or voice messages. If the user wants the spoken content, use transcribe_audio on those local file paths before replying.`;
             }
         }
         content.push({ type: "text", text: prompt });

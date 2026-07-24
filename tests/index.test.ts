@@ -6,6 +6,7 @@ import {
 	guessExtensionFromMime,
 	guessMediaType,
 	isImageMimeType,
+	isAudioFile,
 	formatTokens,
 	chunkParagraphs,
 	hasSessionCommands,
@@ -41,6 +42,12 @@ test("isImageMimeType correctly checks for image prefix", () => {
 	assert.equal(isImageMimeType("image/webp"), true);
 	assert.equal(isImageMimeType("application/json"), false);
 	assert.equal(isImageMimeType(undefined), false);
+});
+
+test("isAudioFile recognizes telegram audio attachments", () => {
+	assert.equal(isAudioFile({ path: "/tmp/voice.ogg", fileName: "voice.ogg", isImage: false, mimeType: "audio/ogg" }), true);
+	assert.equal(isAudioFile({ path: "/tmp/upload.m4a", fileName: "upload.m4a", isImage: false }), true);
+	assert.equal(isAudioFile({ path: "/tmp/image.png", fileName: "image.png", isImage: true, mimeType: "image/png" }), false);
 });
 
 test("formatTokens formats token counts into human readable strings", () => {
